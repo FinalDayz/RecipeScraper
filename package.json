@@ -1,0 +1,19 @@
+{
+  "name": "recipescraper",
+  "version": "1.0.0",
+  "description": "Scrapes recipes from websites",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "node-fetch": "^2.6.1",
+    "node-html-parser": "^3.1.6",
+    "typescript-watcher": "^0.0.4"
+  },
+  "devDependencies": {
+    "tsc-watch": "^4.2.9"
+  }
+}
