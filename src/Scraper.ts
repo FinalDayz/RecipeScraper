@@ -13,7 +13,7 @@ function fetchStructuredData(document: HTMLElement) {
                 continue;
             }
 
-            console.log(scriptContent)
+            console.log(scriptContent);
 
         } catch(exception) {
             console.log(exception)

@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.scrape = void 0;
 const fetch = require("node-fetch");
 const node_html_parser_1 = require("node-html-parser");
 function fetchStructuredData(document) {
