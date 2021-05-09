@@ -10,7 +10,7 @@ function fetchStructuredData(document) {
     for (let script of scripts) {
         try {
             const scriptContent = JSON.parse(script.textContent);
-            console.log(scriptContent['@context']);
+            // console.log(scriptContent['@context']);
             if (validSchemaUrls().indexOf(scriptContent['@context']) === -1) {
                 continue;
             }
@@ -26,7 +26,27 @@ function fetchStructuredData(document) {
         return foundRecipe;
     for (const schemaUrl of validSchemaUrls(false)) {
         const element = document.querySelector('[itemtype="' + schemaUrl + '/Recipe"]');
-        console.log(element);
+        if (!element)
+            continue;
+        const allPropContents = {};
+        for (const itemPropElement of element.querySelectorAll('[itemprop]')) {
+            const attributes = itemPropElement.attributes;
+            const value = attributes.content ? attributes.content : itemPropElement.innerText;
+            if (allPropContents[attributes.itemprop]) {
+                console.log("already exiswts");
+                if (!Array.isArray(allPropContents[attributes.itemprop])) {
+                    allPropContents[attributes.itemprop] = [
+                        allPropContents[attributes.itemprop]
+                    ];
+                }
+                allPropContents[attributes.itemprop].push(value);
+                console.log(attributes.itemprop, allPropContents[attributes.itemprop]);
+            }
+            allPropContents[attributes.itemprop] = value;
+            // console.log(attributes.itemprop, ":", attributes.content, " OR ", itemPropElement.innerText);
+        }
+        console.log(allPropContents);
+        // console.log(element);
     }
 }
 function validSchemaUrls(trailingSlash = true) {
