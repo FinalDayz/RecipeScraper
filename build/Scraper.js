@@ -10,16 +10,17 @@ function fetchStructuredData(document) {
     for (let script of scripts) {
         try {
             const scriptContent = JSON.parse(script.textContent);
-            // console.log(scriptContent['@context']);
             if (validSchemaUrls().indexOf(scriptContent['@context']) === -1) {
                 continue;
             }
-            if (scriptContent['@type'] === 'Recipe') {
-                foundRecipe = parseRecipe(scriptContent);
+            foundRecipe = parseStructuredData(scriptContent);
+            if (foundRecipe) {
+                break;
             }
         }
         catch (exception) {
             console.log(exception);
+            throw exception;
         }
     }
     if (foundRecipe)
@@ -33,21 +34,34 @@ function fetchStructuredData(document) {
             const attributes = itemPropElement.attributes;
             const value = attributes.content ? attributes.content : itemPropElement.innerText;
             if (allPropContents[attributes.itemprop]) {
-                console.log("already exiswts");
                 if (!Array.isArray(allPropContents[attributes.itemprop])) {
                     allPropContents[attributes.itemprop] = [
                         allPropContents[attributes.itemprop]
                     ];
                 }
                 allPropContents[attributes.itemprop].push(value);
-                console.log(attributes.itemprop, allPropContents[attributes.itemprop]);
             }
-            allPropContents[attributes.itemprop] = value;
-            // console.log(attributes.itemprop, ":", attributes.content, " OR ", itemPropElement.innerText);
+            else {
+                allPropContents[attributes.itemprop] = value;
+            }
         }
-        console.log(allPropContents);
-        // console.log(element);
+        foundRecipe = parseRecipe(allPropContents);
     }
+    return foundRecipe;
+}
+function parseStructuredData(data) {
+    if (data['@graph'] && Array.isArray(data['@graph'])) {
+        for (const subData of data['@graph']) {
+            const recipe = parseStructuredData(subData);
+            if (recipe) {
+                return recipe;
+            }
+        }
+    }
+    if (data['@type'] === 'Recipe') {
+        return parseRecipe(data);
+    }
+    return null;
 }
 function validSchemaUrls(trailingSlash = true) {
     return [
@@ -60,49 +74,93 @@ function validSchemaUrls(trailingSlash = true) {
     ] : []);
 }
 function parseRecipe(scriptContent) {
-    console.log("Found recipe");
     const recipe = new ScrapedRecipe_1.ScrapedRecipe();
-    recipe.name = scriptContent.name;
-    recipe.alternateName = scriptContent.alternateName;
+    recipe.name = smartFilterRawText(scriptContent.name);
+    recipe.alternateName = smartFilterRawText(scriptContent.alternateName);
     recipe.URL = scriptContent.URL;
     recipe.totalTime = scriptContent.totalTime;
-    recipe.image = scriptContent.image;
-    recipe.description = scriptContent.descriptScrapedRecipeion;
-    recipe.recipeYield = scriptContent.recipeYield;
-    recipe.recipeCategory = scriptContent.recipeCategory;
-    recipe.recipeCuisine = scriptContent.recipeCuisine;
-    recipe.recipeIngredient = scriptContent.recipeIngredient;
-    recipe.recipeInstructions = [];
-    recipe.recipeInstructions = smartParseInstructions(scriptContent);
-    console.log(recipe);
+    recipe.image = parseImage(scriptContent.image);
+    recipe.description = smartFilterRawText(scriptContent.descriptScrapedRecipeion);
+    recipe.recipeYield = smartFilterRawText(scriptContent.recipeYield);
+    recipe.recipeCategory = smartFilterRawText(scriptContent.recipeCategory);
+    recipe.recipeCuisine = smartFilterRawText(scriptContent.recipeCuisine);
+    // recipe.recipeIngredient = scriptContent.recipeIngredient;
+    recipe.recipeIngredient = smartParseList(scriptContent.recipeIngredient, isValidIngredient, smartFilterRawText);
+    recipe.recipeInstructions = smartParseList(scriptContent.recipeInstructions, isValidStep, smartFilterRawText);
+    return recipe;
 }
-function smartParseInstructions(scriptContent) {
-    let instructions = [];
-    switch (typeof scriptContent.recipeInstructions) {
+function parseImage(image) {
+    if (typeof image === 'object') {
+        return image['url'] ? image['url'] : '';
+    }
+    return image;
+}
+function smartParseList(list, verifyFunc, filter) {
+    let parsedList = [];
+    switch (typeof list) {
         case "string":
-            const splittedInstructions = scriptContent.recipeInstructions.split(/<[^>]+>|[\n\r]/g);
-            console.log(splittedInstructions);
-            for (const step of splittedInstructions) {
-                if (step.length > 5) {
-                    instructions.push(step);
+            const splitted = list.split(/<[^>]+>|[\n\r]/g);
+            for (const element of splitted) {
+                if (verifyFunc(element)) {
+                    parsedList.push(filter(element));
                 }
             }
             break;
         case "object":
-            if (Array.isArray(scriptContent.recipeInstructions)) {
-                for (const step of scriptContent.recipeInstructions) {
-                    instructions.push(step);
-                }
+            const isArr = Array.isArray(list);
+            if (!isArr) {
+                parsedList = parseListOfType(list, verifyFunc, filter);
+                break;
             }
-            else {
-                for (const step of scriptContent.recipeInstructions) {
-                    instructions.push(step.text);
+            for (const element of list) {
+                if (typeof element === 'object') {
+                    parsedList = [...parsedList, ...parseListOfType(element, verifyFunc, filter)];
+                }
+                else if (verifyFunc(element)) {
+                    const val = isArr ? element : element.text;
+                    parsedList.push(filter(val));
                 }
             }
             break;
     }
-    console.log(instructions);
-    return instructions;
+    return parsedList;
+}
+function parseListOfType(obj, verifyFunc, filter) {
+    let list = [];
+    if (obj['@type']) {
+        switch (obj['@type']) {
+            case 'HowToSection':
+                for (const howTo of obj['itemListElement']) {
+                    list = [...list, ...parseListOfType(howTo, verifyFunc, filter)];
+                }
+                break;
+            case 'HowToStep':
+                if (verifyFunc(obj['text'])) {
+                    list = [filter([obj['text']])];
+                }
+                break;
+        }
+    }
+    else {
+        for (const element of obj) {
+            if (verifyFunc(element)) {
+                const val = element.text ? element : element.text;
+                if (verifyFunc(val)) {
+                    list = [filter(val)];
+                }
+            }
+        }
+    }
+    return list;
+}
+function smartFilterRawText(val) {
+    return String(val).replace(/<[^><]+>/g, '').trim();
+}
+function isValidStep(step) {
+    return String(step).trim().length > 5;
+}
+function isValidIngredient(step) {
+    return step.trim().length > 2;
 }
 function scrape(url) {
     console.log("Scraping site '" + url + "'");
@@ -110,8 +168,14 @@ function scrape(url) {
         fetch(url)
             .then(response => response.text())
             .then(html => {
-            const document = node_html_parser_1.parse(html);
-            fetchStructuredData(document);
+            try {
+                const document = node_html_parser_1.parse(html);
+                const recipe = fetchStructuredData(document);
+                acc(recipe);
+            }
+            catch (err) {
+                rej(err);
+            }
         });
     });
 }
